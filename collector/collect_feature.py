@@ -32,10 +32,10 @@ def save_baseline_pairs(pairs):
         pickle.dump(pairs, f)
 
 def compute_parent_child_score(current_pairs):
-    baseline_pairs = load_baseline_pairs()
+    baseline_pairs = set(load_baseline_pairs())
     if not baseline_pairs:
         # first run, consider all normal
-        save_baseline_pairs(current_pairs)
+        save_baseline_pairs(set(current_pairs))
         return 0.0
     new_pairs = sum(1 for pair in current_pairs if pair not in baseline_pairs)
     score = new_pairs / max(len(current_pairs), 1)
@@ -94,16 +94,12 @@ def parse_auth_log(window_start):
 # -----------------------------
 # Filesystem monitoring
 # -----------------------------
-def collect_fs_stats(window_start, window_end):
-    file_create_count = 0
-    file_delete_count = 0
-    hidden_file_count = 0
-    permission_change_count = 0
-    disk_write_start = psutil.disk_io_counters().write_bytes
-
+def collect_fs_stats(window_size_sec):
+    # INITIAL SNAPSHOT
     file_mode_map = {}
+    initial_files = set()
+    initial_hidden = 0
 
-    # initial snapshot
     for path in WATCH_PATHS:
         for root, dirs, files in os.walk(path):
             for f in files:
@@ -111,42 +107,49 @@ def collect_fs_stats(window_start, window_end):
                 try:
                     st = os.stat(full)
                     file_mode_map[full] = S_IMODE(st.st_mode)
+                    initial_files.add(full)
                     if f.startswith("."):
-                        hidden_file_count += 1
+                        initial_hidden += 1
                 except:
                     continue
 
-    # sleep for window duration
-    time.sleep(window_end - window_start)
+    disk_write_start = psutil.disk_io_counters().write_bytes
 
-    # check changes
-    disk_write_end = psutil.disk_io_counters().write_bytes
-    disk_write_rate = (disk_write_end - disk_write_start) / max(window_end - window_start, 1)
+    # WAIT for the collection window
+    time.sleep(window_size_sec)
 
-    # final snapshot
+    # FINAL SNAPSHOT
+    final_files = set()
+    permission_change_count = 0
+    final_hidden = 0
+
     for path in WATCH_PATHS:
         for root, dirs, files in os.walk(path):
             for f in files:
                 full = os.path.join(root, f)
+                final_files.add(full)
+
                 try:
                     st = os.stat(full)
                     old_mode = file_mode_map.get(full)
-                    if f.startswith(".") and full not in file_mode_map:
-                        hidden_file_count += 1
                     if old_mode and S_IMODE(st.st_mode) != old_mode:
                         permission_change_count += 1
+                    if f.startswith("."):
+                        final_hidden += 1
                 except:
                     continue
 
-            # deleted files
-            for full in file_mode_map:
-                if not os.path.exists(full):
-                    file_delete_count += 1
+    # FILE CREATE / DELETE CALC
+    file_create_count = len(final_files - initial_files)
+    file_delete_count = len(initial_files - final_files)
+    hidden_file_count = max(final_hidden - initial_hidden, 0)
 
-    # approximate file creates
-    file_create_count = max(0, len([f for f in file_mode_map if not os.path.exists(f)]))
+    # DISK WRITE RATE
+    disk_write_end = psutil.disk_io_counters().write_bytes
+    disk_write_rate = (disk_write_end - disk_write_start) / max(window_size_sec, 1)
 
     return file_create_count, file_delete_count, hidden_file_count, permission_change_count, disk_write_rate
+
 
 # -----------------------------
 # Main collector
@@ -159,60 +162,89 @@ def collect_features(window_size_sec=60):
     cpu_samples, mem_samples = [], []
     spawned_pids_counter = {}
     seen_commands = set()
-
-    # FS stats in parallel
     fs_results = {}
-    t = threading.Thread(target=lambda: fs_results.update(
-        dict(zip(
-            ["file_create_count","file_delete_count","hidden_file_count","permission_change_count","disk_write_rate"],
-            collect_fs_stats(window_start, window_end)
-        ))
-    ))
+
+    # -----------------------------
+    # FS worker (parallel)
+    # -----------------------------
+    def fs_worker():
+        fc, fd, hid, perm, rate = collect_fs_stats(window_size_sec)
+        fs_results["file_create_count"] = fc
+        fs_results["file_delete_count"] = fd
+        fs_results["hidden_file_count"] = hid
+        fs_results["permission_change_count"] = perm
+        fs_results["disk_write_rate"] = rate
+
+    t = threading.Thread(target=fs_worker)
     t.start()
 
+    # -----------------------------
+    # Main CPU/mem/process sampling loop
+    # -----------------------------
+    last_proc_scan = 0
     while time.time() < window_end:
+        # CPU & memory sampling
         cpu = psutil.cpu_percent(interval=1)
         mem = psutil.virtual_memory().percent
         cpu_samples.append(cpu)
         mem_samples.append(mem)
 
-        for p in psutil.process_iter(['pid','name','username','ppid','cmdline','create_time']):
-            try:
-                spawned_pids_counter[p.info['name']] = spawned_pids_counter.get(p.info['name'],0)+1
-                if p.info['name'] in ("bash","sh","zsh"):
-                    cmdline = " ".join(p.info['cmdline'])
-                    if cmdline and (p.info['pid'], cmdline) not in seen_commands:
-                        seen_commands.add((p.info['pid'], cmdline))
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                continue
+        # Process scanning every 5 seconds
+        now = time.time()
+        if now - last_proc_scan >= 5:
+            last_proc_scan = now
+            for p in psutil.process_iter(['pid', 'name', 'username', 'ppid', 'cmdline', 'create_time']):
+                try:
+                    spawned_pids_counter[p.info['name']] = spawned_pids_counter.get(p.info['name'], 0) + 1
+                    if p.info['name'] in ("bash", "sh", "zsh"):
+                        cmdline = " ".join(p.info['cmdline'])
+                        if cmdline and (p.info['pid'], cmdline) not in seen_commands:
+                            seen_commands.add((p.info['pid'], cmdline))
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
 
+    # Wait for FS worker to finish
     t.join()
 
-    all_procs = list(psutil.process_iter())
-    background_ratio = sum(1 for p in all_procs if getattr(p,'username',lambda:None)()!=current_user)/max(len(all_procs),1)
-    orphan_count = sum(1 for p in all_procs if getattr(p,'ppid',lambda:0)()==1)
-    long_running = sum(1 for p in all_procs if time.time() - getattr(p,'create_time',lambda:time.time())()>3600)
-    spawned_pids = sum(1 for v in spawned_pids_counter.values() if v==1)
+    # -----------------------------
+    # Process stats
+    # -----------------------------
+    all_procs = list(psutil.process_iter(['pid', 'ppid', 'username', 'create_time', 'name']))
+    background_ratio = sum(1 for p in all_procs if p.info.get('username') != current_user) / max(len(all_procs), 1)
+    orphan_count = sum(1 for p in all_procs if p.info['ppid'] == 1)
+    long_running = sum(
+        1 for p in all_procs
+        if hasattr(p, 'create_time') and (time.time() - p.create_time()) > 3600
+    )
+    spawned_pids = sum(1 for v in spawned_pids_counter.values() if v == 1)
     unique_processes = len(spawned_pids_counter)
-    shell_spawn_count = sum(1 for name in spawned_pids_counter if name in ("bash","sh","zsh"))
+    shell_spawn_count = sum(1 for name in spawned_pids_counter if name in ("bash", "sh", "zsh"))
 
     commands_window = [cmd for pid, cmd in seen_commands]
     unique_commands = len(set(commands_window))
-    avg_command_length = sum(len(c) for c in commands_window)/max(len(commands_window),1)
+    avg_command_length = sum(len(c) for c in commands_window) / max(len(commands_window), 1)
     pipe_usage_count = sum(1 for c in commands_window if "|" in c)
-    encoded_command_ratio = sum(1 for c in commands_window if any(x in c for x in ['base64','eval','decode'])) / max(len(commands_window),1)
-    suspicious_command_ratio = sum(1 for c in commands_window if any(x in c for x in ['wget','curl','nc','netcat','chmod 777'])) / max(len(commands_window),1)
+    encoded_command_ratio = sum(1 for c in commands_window if any(x in c for x in ['base64', 'eval', 'decode'])) / max(len(commands_window), 1)
+    suspicious_command_ratio = sum(1 for c in commands_window if any(x in c for x in ['wget', 'curl', 'nc', 'netcat', 'chmod 777'])) / max(len(commands_window), 1)
 
-    cpu_mean = sum(cpu_samples)/max(len(cpu_samples),1)
-    mem_mean = sum(mem_samples)/max(len(mem_samples),1)
-    cpu_spike_count = sum(1 for c in cpu_samples if c>80)
+    cpu_mean = sum(cpu_samples) / max(len(cpu_samples), 1)
+    mem_mean = sum(mem_samples) / max(len(mem_samples), 1)
+    cpu_spike_count = sum(1 for c in cpu_samples if c > 80)
 
+    # -----------------------------
+    # Auth log parsing
+    # -----------------------------
     failed_login_count, successful_login_count, unique_users_attempted, root_login_attempts, sudo_command_count, avg_time_between_logins = parse_auth_log(window_start)
 
-    # parent-child anomaly
-    current_pairs = [(p.pid, getattr(p,'ppid',lambda:0)()) for p in all_procs]
+    # -----------------------------
+    # Parent-child anomaly
+    # -----------------------------
+    current_pairs = [(p.info['pid'], p.info.get('ppid', 0)) for p in all_procs]
     parent_child_score = compute_parent_child_score(current_pairs)
 
+    # -----------------------------
+    # Build feature dict
+    # -----------------------------
     features = {
         "window_size_sec": window_size_sec,
         "failed_login_count": failed_login_count,
@@ -236,26 +268,30 @@ def collect_features(window_size_sec=60):
         "cpu_usage_mean": cpu_mean,
         "cpu_spike_count": cpu_spike_count,
         "memory_usage_mean": mem_mean,
-        "disk_write_rate": fs_results.get("disk_write_rate",0.0),
-        "file_create_count": fs_results.get("file_create_count",0),
-        "file_delete_count": fs_results.get("file_delete_count",0),
-        "hidden_file_count": fs_results.get("hidden_file_count",0),
-        "permission_change_count": fs_results.get("permission_change_count",0)
+        "disk_write_rate": fs_results.get("disk_write_rate", 0.0),
+        "file_create_count": fs_results.get("file_create_count", 0),
+        "file_delete_count": fs_results.get("file_delete_count", 0),
+        "hidden_file_count": fs_results.get("hidden_file_count", 0),
+        "permission_change_count": fs_results.get("permission_change_count", 0)
     }
 
-    file_path = os.path.join(DATA_DIR,f"host_{datetime.now().strftime('%Y%m%d%H%M%S')}.json")
-    with open(file_path,"w") as f:
-        json.dump(features,f,indent=4)
+    file_path = os.path.join(DATA_DIR, f"host_{datetime.now().strftime('%Y%m%d%H%M%S')}.json")
+    with open(file_path, "w") as f:
+        json.dump(features, f, indent=4)
     print(f"[+] Saved snapshot: {file_path}")
     return file_path
 
 # -----------------------------
-# Main loop
+# Main loop (i changed this to infinity because im going to keep this on for the night)
 # -----------------------------
 if __name__ == "__main__":
-    print("[*] Collector started for 300 cycles...")
-    for i in range(300):
-        print(f"[*] Cycle {i+1}/300...")
-        collect_features(60)
-    print("[✓] Completed 300 snapshots. Exiting.")
-
+    print("[*] Collector started (running indefinitely)...")
+    cycle = 0
+    while True:
+        cycle += 1
+        print(f"[*] Cycle {cycle}...")
+        try:
+            collect_features(60)
+        except Exception as e:
+            print(f"[!] Error in cycle {cycle}: {e}")
+            time.sleep(5)  # wait a bit before retrying to avoid spamming errors
