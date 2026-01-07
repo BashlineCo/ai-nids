@@ -1,0 +1,13 @@
+# Python virtual environment
+venv/
+
+# Python cache files
+__pycache__/
+*.pyc
+
+# System files (Mac)
+.DS_Store
+
+# Optional: ignore all fake/generated data
+data/fake/*.json
+
