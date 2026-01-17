@@ -6,7 +6,7 @@ def extract_features(raw_data):
         # Login / Authentication
         "failed_login_count": raw_data.get("failed_login_count", 0),
         "successful_login_count": raw_data.get("successful_login_count", 0),
-        "unique_users_attempted": len(raw_data.get("unique_users_attempted", [])),  # <- FIXED
+        "unique_users_attempted": raw_data.get("unique_users_attempted", 0),  # <- FIXED
         "root_login_attempts": raw_data.get("root_login_attempts", 0),
         "sudo_command_count": raw_data.get("sudo_command_count", 0),
         "avg_time_between_logins": raw_data.get("avg_time_between_logins", 0.0),
