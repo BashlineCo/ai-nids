@@ -1,79 +1,162 @@
-# AI-Based Host Intrusion Detection System (HIDS)
+AI-Based Hybrid Network Intrusion Detection System (NIDS)
+🚀 Project Overview
 
-## 📌 Project Overview
-This project aims to build a **Host-Based Intrusion Detection System (HIDS)** that monitors system activity and detects suspicious or anomalous behavior on a single machine.
+This project is an AI-powered Hybrid Network Intrusion Detection System (NIDS) designed to monitor host-level and network-level behavior and detect anomalies using Machine Learning (Isolation Forest).
 
-The system is **feature-driven**, with the design focused on extracting meaningful behavioral signals from logs, processes, commands, and resource usage.  
-An AI/ML component will be integrated on top of these features at a later stage.
+Unlike traditional signature-based IDS tools, this system learns normal behavior automatically and flags deviations that may indicate:
 
----
+Malware activity
 
-## 🎯 Objectives
-- Monitor host-level activity in real time or near-real time
-- Detect abnormal behavior such as brute-force logins, shell abuse, or suspicious command execution
-- Provide an explainable and extensible detection framework
-- Serve as a foundation for AI-based anomaly detection
+Lateral movement
 
----
+Privilege escalation
 
-## 🧠 Detection Approach
-The system follows a **two-layer design**:
+Data exfiltration
 
-1. **Feature Extraction Layer**
-   - Aggregates system behavior over fixed time windows
-   - Produces structured feature vectors
+Brute-force or suspicious authentication behavior
 
-2. **Detection Layer**
-   - Initial version: rule-based anomaly detection
-   - Future version: AI/ML-based anomaly detection (handled separately)
+⚠️ Designed as a learning + research-grade cybersecurity project, inspired by real SOC and EDR systems.
 
----
+🧠 Key Concept
 
-## 🧩 Feature Set (v1)
-The initial version uses a **minimal, high-signal feature set** to avoid noise and overfitting.
+This is a Hybrid NIDS, meaning it combines:
 
-Examples include:
-- Authentication behavior (failed/successful logins)
-- Shell and process spawning behavior
-- Command execution characteristics
-- System resource usage patterns
+Host-based monitoring (HIDS)
 
-📄 The complete and frozen feature list is documented in `features.md`.
+Processes
 
----
+File system
 
+Authentication logs
 
----
+Command behavior
 
-## 🚧 Project Status
-**Design Freeze – v1**
+Network-based monitoring (NIDS)
 
-- Feature list finalized
-- Implementation paused until full team coordination
-- Data collection and AI model development will begin in the next phase
+Active connections
 
----
+Traffic rates
 
-## 🔮 Future Work
-- Implement log and process data collectors
-- Complete feature extraction pipeline
-- Add rule-based detection engine
-- Integrate ML models for anomaly detection
-- Evaluate system against simulated attack scenarios
+Ports and remote IPs
 
----
+All collected features are fed into a Machine Learning model (Isolation Forest) for anomaly detection.
 
-## 👥 Team
-- Feature design & system architecture: *Current contributor*
-- Data collection & AI/ML modeling: *Partner contributor*
+🛠️ Tech Stack
 
----
+Python 3
 
-## ⚠ Disclaimer
-This project is developed **strictly for educational and defensive security purposes**.  
-No offensive or unauthorized activity is intended or supported.
+psutil – system & network monitoring
 
----
+Isolation Forest (scikit-learn) – anomaly detection
 
-## 📜 License
-This project is intended for academic use. Licensing will be defined in future versions.
+Linux (Ubuntu recommended)
+
+JSON-based feature snapshots
+
+📊 Features Collected
+🔐 Authentication Features
+
+failed_login_count
+
+successful_login_count
+
+unique_users_attempted
+
+root_login_attempts
+
+sudo_command_count
+
+avg_time_between_logins
+
+auth_log_present ⚠️ (log tampering signal)
+
+⚙️ Process & Behavior Features
+
+process_spawn_rate
+
+unique_process_count
+
+shell_spawn_count
+
+parent_child_anomaly_score
+
+background_process_ratio
+
+orphan_process_count
+
+long_running_process_count
+
+🧪 Command Behavior Features
+
+encoded_command_ratio (base64 / hex usage)
+
+suspicious_command_ratio (wget, curl, nc, etc.)
+
+pipe_usage_count
+
+unique_command_count
+
+avg_command_length
+
+💾 Filesystem Features
+
+file_create_count
+
+file_delete_count
+
+hidden_file_count
+
+permission_change_count
+
+disk_write_rate
+
+🌐 Network (NIDS) Features
+
+total_network_connections
+
+tcp_connections
+
+udp_connections
+
+bytes_sent_per_sec
+
+bytes_recv_per_sec
+
+inbound_outbound_ratio
+
+listening_ports_count
+
+established_connections
+
+unique_remote_ips
+
+These features allow detection of malware beacons, scans, C2 traffic, and data exfiltration.
+
+🤖 Machine Learning Model
+Isolation Forest
+
+Unsupervised learning (no labeled attacks needed)
+
+Learns what "normal" behavior looks like
+
+Flags rare or abnormal behavior as anomalies
+
+Why Isolation Forest?
+
+Scales well
+
+Works with high-dimensional data
+
+Commonly used in real SOC anomaly systems
+
+🔁 How the System Works
+
+Collector runs every 60 seconds
+
+Extracts host + network features
+
+Saves snapshot as JSON
+
+ML model scores snapshot
+
+High anomaly score → potential intrusion
