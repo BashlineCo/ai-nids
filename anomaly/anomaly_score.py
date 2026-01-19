@@ -16,6 +16,7 @@ SCALER_PATH = os.path.join(os.path.dirname(__file__), "scaler.pkl")
 # Features (must match collector)
 # -----------------------------
 FEATURE_KEYS = [
+    "auth_log_present",
     "failed_login_count",
     "successful_login_count",
     "unique_users_attempted",

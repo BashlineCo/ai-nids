@@ -56,9 +56,11 @@ def parse_auth_log(window_start):
     root_login_attempts = 0
     sudo_command_count = 0
     login_timestamps = []
+    
+    auth_log_present = 1 if os.path.exists(AUTH_LOG_PATH) else 0
 
     if not os.path.exists(AUTH_LOG_PATH):
-        return 0,0,0,0,0,0.0
+        return 0,0,0,0,0,0.0,0
 
     with open(AUTH_LOG_PATH, "r", encoding="utf-8", errors="ignore") as f:
         for line in f:
@@ -106,7 +108,8 @@ def parse_auth_log(window_start):
         len(unique_users_attempted),
         root_login_attempts,
         sudo_command_count,
-        avg_time_between_logins
+        avg_time_between_logins,
+        auth_log_present
     )
 
 # -----------------------------
@@ -271,7 +274,11 @@ def collect_features(window_size_sec=60):
     all_procs = list(psutil.process_iter(['pid','ppid','username','create_time','name']))
     background_ratio = sum(1 for p in all_procs if p.info.get('username') != current_user) / max(len(all_procs),1)
     orphan_count = sum(1 for p in all_procs if p.info['ppid'] == 1)
-    long_running = sum(1 for p in all_procs if (time.time() - p.create_time()) > 3600)
+    long_running = sum(
+    1 for p in all_procs
+    if p.info.get('create_time') and (time.time() - p.info['create_time']) > 3600
+)
+
 
     spawned_pids = sum(1 for v in spawned_pids_counter.values() if v == 1)
     unique_processes = len(spawned_pids_counter)
@@ -305,7 +312,7 @@ def collect_features(window_size_sec=60):
     mem_mean = sum(mem_samples) / max(len(mem_samples),1)
     cpu_spike_count = sum(1 for c in cpu_samples if c > 80)
 
-    failed_login_count, successful_login_count, unique_users_attempted, root_login_attempts, sudo_command_count, avg_time_between_logins = parse_auth_log(window_start)
+    failed_login_count, successful_login_count, unique_users_attempted, root_login_attempts, sudo_command_count, avg_time_between_logins, auth_log_present = parse_auth_log(window_start)
 
     current_pairs = [(p.info['pid'], p.info.get('ppid',0)) for p in all_procs]
     parent_child_score = compute_parent_child_score(current_pairs)
@@ -317,6 +324,7 @@ def collect_features(window_size_sec=60):
 
     features = {
         "window_size_sec": window_size_sec,
+        "auth_log_present": auth_log_present,
         "failed_login_count": failed_login_count,
         "successful_login_count": successful_login_count,
         "unique_users_attempted": unique_users_attempted,

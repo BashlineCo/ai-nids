@@ -4,6 +4,7 @@ def extract_features(raw_data):
         "window_size_sec": raw_data.get("window_size_sec", 60),
 
         # Login / Authentication
+        "auth_log_present": raw_data.get("auth_log_present", 0),
         "failed_login_count": raw_data.get("failed_login_count", 0),
         "successful_login_count": raw_data.get("successful_login_count", 0),
         "unique_users_attempted": raw_data.get("unique_users_attempted", 0),  # <- FIXED
@@ -19,6 +20,7 @@ def extract_features(raw_data):
         "background_process_ratio": raw_data.get("background_process_ratio", 0.0),
         "orphan_process_count": raw_data.get("orphan_process_count", 0),
         "long_running_process_count": raw_data.get("long_running_process_count", 0),
+        "auth_log_present": auth_log_presen
 
         # Commands / Behavior
         "encoded_command_ratio": raw_data.get("encoded_command_ratio", 0.0),
