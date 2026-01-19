@@ -38,6 +38,16 @@ def extract_features(raw_data):
         "file_delete_count": raw_data.get("file_delete_count", 0),
         "hidden_file_count": raw_data.get("hidden_file_count", 0),
         "permission_change_count": raw_data.get("permission_change_count", 0)
+        # Network
+        "total_network_connections": raw_data.get("total_network_connections", 0),
+        "tcp_connections": raw_data.get("tcp_connections", 0),
+        "udp_connections": raw_data.get("udp_connections", 0),
+        "bytes_sent_per_sec": raw_data.get("bytes_sent_per_sec", 0.0),
+        "bytes_recv_per_sec": raw_data.get("bytes_recv_per_sec", 0.0),
+        "inbound_outbound_ratio": raw_data.get("inbound_outbound_ratio", 0.0),
+        "listening_ports_count": raw_data.get("listening_ports_count", 0),
+        "established_connections": raw_data.get("established_connections", 0),
+        "unique_remote_ips": raw_data.get("unique_remote_ips", 0)
     }
 
     return features

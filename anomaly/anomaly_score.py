@@ -42,6 +42,15 @@ FEATURE_KEYS = [
     "file_delete_count",
     "hidden_file_count",
     "permission_change_count"
+    "total_network_connections"
+    "tcp_connections"
+    "udp_connections"
+    "bytes_sent_per_sec"
+    "bytes_recv_per_sec"
+    "inbound_outbound_ratio"
+    "listening_ports_count"
+    "established_connections"
+    "unique_remote_ips",
 ]
 
 # -----------------------------
