@@ -1,0 +1,1487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI-NIDS · Intrusion Detection System</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;500;600;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #020b10;
+    --panel:     #040f16;
+    --border:    #0d3348;
+    --glow:      #00d4ff;
+    --glow-dim:  #00d4ff33;
+    --glow-mid:  #00d4ff88;
+    --red:       #ff2d55;
+    --red-dim:   #ff2d5533;
+    --amber:     #ffaa00;
+    --amber-dim: #ffaa0033;
+    --green:     #00ff88;
+    --green-dim: #00ff8833;
+    --text:      #b0d4e8;
+    --text-dim:  #3a6678;
+    --mono:      'Share Tech Mono', monospace;
+    --head:      'Orbitron', sans-serif;
+    --body:      'Rajdhani', sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--body);
+    font-size: 15px;
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+
+  /* scanline overlay */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,212,255,0.012) 2px,
+      rgba(0,212,255,0.012) 4px
+    );
+    pointer-events: none;
+    z-index: 1000;
+  }
+
+  /* noise texture */
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 999;
+    opacity: 0.4;
+  }
+
+  /* ─── HEADER ─── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 32px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, #040f16 0%, #020b10 100%);
+    position: sticky; top: 0; z-index: 100;
+  }
+
+  .logo {
+    display: flex; align-items: center; gap: 14px;
+  }
+
+  .logo-icon {
+    width: 38px; height: 38px;
+    border: 1.5px solid var(--glow);
+    border-radius: 4px;
+    display: grid; place-items: center;
+    box-shadow: 0 0 12px var(--glow-dim), inset 0 0 12px var(--glow-dim);
+    animation: pulse-border 3s ease-in-out infinite;
+  }
+  .logo-icon svg { width: 20px; height: 20px; }
+
+  @keyframes pulse-border {
+    0%, 100% { box-shadow: 0 0 12px var(--glow-dim), inset 0 0 12px var(--glow-dim); }
+    50%       { box-shadow: 0 0 24px var(--glow-mid), inset 0 0 20px var(--glow-dim); }
+  }
+
+  .logo-text h1 {
+    font-family: var(--head);
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--glow);
+    letter-spacing: 4px;
+    line-height: 1;
+  }
+  .logo-text span {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+  }
+
+  .header-right { display: flex; align-items: center; gap: 24px; }
+
+  .status-pill {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 14px;
+    border: 1px solid;
+    border-radius: 2px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all .2s;
+  }
+  .status-pill.running {
+    border-color: var(--green);
+    color: var(--green);
+    background: var(--green-dim);
+    box-shadow: 0 0 10px var(--green-dim);
+  }
+  .status-pill.stopped {
+    border-color: var(--text-dim);
+    color: var(--text-dim);
+    background: transparent;
+  }
+  .status-pill .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+  .status-pill.running .dot { animation: blink 1.2s ease-in-out infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+  .clock {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+  }
+
+  /* ─── NAV ─── */
+  nav {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+    padding: 0 32px;
+  }
+  .nav-tab {
+    padding: 12px 24px;
+    font-family: var(--body);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all .2s;
+    user-select: none;
+  }
+  .nav-tab:hover { color: var(--text); }
+  .nav-tab.active {
+    color: var(--glow);
+    border-bottom-color: var(--glow);
+  }
+
+  /* ─── MAIN ─── */
+  main { padding: 24px 32px; }
+
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* ─── GRID ─── */
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+  .grid-main { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 20px; }
+
+  /* ─── PANEL ─── */
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+  }
+  .panel::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--glow-dim), transparent);
+  }
+  .panel-title {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .panel-title::before {
+    content: '';
+    display: block;
+    width: 3px; height: 10px;
+    background: var(--glow);
+    box-shadow: 0 0 6px var(--glow);
+  }
+
+  /* ─── STAT CARDS ─── */
+  .stat-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 18px 20px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color .2s;
+  }
+  .stat-card:hover { border-color: var(--glow-mid); }
+  .stat-card::after {
+    content: '';
+    position: absolute; bottom: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--glow);
+    opacity: 0.3;
+  }
+  .stat-card.critical::after { background: var(--red); opacity: 0.7; }
+  .stat-card.warning::after  { background: var(--amber); opacity: 0.6; }
+  .stat-card.normal::after   { background: var(--green); opacity: 0.5; }
+
+  .stat-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+  }
+  .stat-value {
+    font-family: var(--head);
+    font-size: 32px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--glow);
+  }
+  .stat-card.critical .stat-value { color: var(--red); text-shadow: 0 0 12px var(--red); }
+  .stat-card.warning  .stat-value { color: var(--amber); text-shadow: 0 0 12px var(--amber); }
+  .stat-card.normal   .stat-value { color: var(--green); text-shadow: 0 0 12px var(--green); }
+
+  .stat-sub {
+    font-family: var(--body);
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
+
+  /* ─── SEVERITY GAUGE ─── */
+  .gauge-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 10px 0;
+  }
+  .gauge-svg { width: 180px; height: 110px; overflow: visible; }
+  .gauge-value {
+    font-family: var(--head);
+    font-size: 42px;
+    font-weight: 900;
+    text-anchor: middle;
+    dominant-baseline: central;
+  }
+  .gauge-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 3px;
+    text-anchor: middle;
+    fill: var(--text-dim);
+  }
+  .gauge-status {
+    font-family: var(--mono);
+    font-size: 14px;
+    letter-spacing: 4px;
+    margin-top: 8px;
+    text-align: center;
+    font-weight: 600;
+  }
+
+  /* ─── TIMELINE CHART ─── */
+  .chart-area {
+    width: 100%;
+    height: 140px;
+    position: relative;
+  }
+  .chart-area svg { width: 100%; height: 100%; }
+  .chart-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    fill: var(--text-dim);
+  }
+
+  /* ─── ALERTS TABLE ─── */
+  .alerts-table { width: 100%; border-collapse: collapse; }
+  .alerts-table th {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    padding: 8px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  .alerts-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #0d334820;
+    font-family: var(--mono);
+    font-size: 12px;
+    vertical-align: middle;
+  }
+  .alerts-table tr:hover td { background: #00d4ff08; }
+  .alerts-table tr:last-child td { border-bottom: none; }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 2px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1px;
+  }
+  .badge.CRITICAL { background: var(--red-dim); color: var(--red); border: 1px solid var(--red); }
+  .badge.WARNING  { background: var(--amber-dim); color: var(--amber); border: 1px solid var(--amber); }
+  .badge.NORMAL   { background: var(--green-dim); color: var(--green); border: 1px solid var(--green); }
+
+  /* ─── FEATURE BARS ─── */
+  .feature-bar-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .feature-bar-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    width: 200px;
+    flex-shrink: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .feature-bar-track {
+    flex: 1;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .feature-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width .6s cubic-bezier(.4,0,.2,1);
+  }
+  .feature-bar-val {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text);
+    width: 50px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  /* ─── RADAR CHART ─── */
+  .radar-wrap {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 10px;
+  }
+
+  /* ─── MINI SPARKLINES ─── */
+  .spark { width: 80px; height: 28px; display: inline-block; }
+
+  /* ─── PIPELINE CONTROLS ─── */
+  .btn {
+    padding: 10px 20px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 2px;
+    border: 1px solid;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: all .2s;
+    background: transparent;
+    text-transform: uppercase;
+  }
+  .btn-primary {
+    border-color: var(--glow);
+    color: var(--glow);
+  }
+  .btn-primary:hover {
+    background: var(--glow-dim);
+    box-shadow: 0 0 14px var(--glow-dim);
+  }
+  .btn-danger {
+    border-color: var(--red);
+    color: var(--red);
+  }
+  .btn-danger:hover {
+    background: var(--red-dim);
+    box-shadow: 0 0 14px var(--red-dim);
+  }
+  .btn-amber {
+    border-color: var(--amber);
+    color: var(--amber);
+  }
+  .btn-amber:hover {
+    background: var(--amber-dim);
+  }
+
+  .btn-row { display: flex; gap: 12px; flex-wrap: wrap; }
+
+  /* ─── LOG CONSOLE ─── */
+  .console {
+    background: #010810;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 14px;
+    height: 260px;
+    overflow-y: auto;
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: 1.8;
+  }
+  .console::-webkit-scrollbar { width: 4px; }
+  .console::-webkit-scrollbar-track { background: #010810; }
+  .console::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .log-line { display: flex; gap: 12px; }
+  .log-ts  { color: var(--text-dim); flex-shrink: 0; }
+  .log-ok  { color: var(--green); }
+  .log-warn{ color: var(--amber); }
+  .log-err { color: var(--red); }
+  .log-info{ color: var(--glow); }
+
+  /* ─── PIPELINE STATUS ─── */
+  .pipeline-steps {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin: 20px 0;
+  }
+  .pipe-step {
+    flex: 1;
+    text-align: center;
+    position: relative;
+  }
+  .pipe-step::after {
+    content: '';
+    position: absolute;
+    top: 20px; right: -50%;
+    width: 100%; height: 1px;
+    background: var(--border);
+    z-index: 0;
+  }
+  .pipe-step:last-child::after { display: none; }
+  .pipe-dot {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 8px;
+    font-size: 16px;
+    background: var(--panel);
+    position: relative; z-index: 1;
+    transition: all .3s;
+  }
+  .pipe-step.done .pipe-dot {
+    border-color: var(--green);
+    box-shadow: 0 0 12px var(--green-dim);
+  }
+  .pipe-step.active .pipe-dot {
+    border-color: var(--glow);
+    box-shadow: 0 0 16px var(--glow-mid);
+    animation: pulse-border 1.5s infinite;
+  }
+  .pipe-step.error .pipe-dot {
+    border-color: var(--red);
+    box-shadow: 0 0 12px var(--red-dim);
+  }
+  .pipe-step.active::after { background: var(--glow-mid); }
+  .pipe-step.done::after   { background: var(--green); opacity: 0.4; }
+  .pipe-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+  }
+  .pipe-step.active .pipe-label { color: var(--glow); }
+  .pipe-step.done   .pipe-label { color: var(--green); }
+
+  /* ─── MODEL METRICS ─── */
+  .metric-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid #0d334820;
+  }
+  .metric-row:last-child { border-bottom: none; }
+  .metric-key { font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
+  .metric-val { font-family: var(--mono); font-size: 13px; color: var(--text); }
+
+  /* ─── SNAPSHOT BROWSER ─── */
+  .snapshot-list { max-height: 320px; overflow-y: auto; }
+  .snapshot-list::-webkit-scrollbar { width: 4px; }
+  .snapshot-list::-webkit-scrollbar-thumb { background: var(--border); }
+  .snap-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-bottom: 1px solid #0d334820;
+    cursor: pointer;
+    transition: background .15s;
+  }
+  .snap-item:hover { background: #00d4ff06; }
+  .snap-item.selected { background: #00d4ff10; border-left: 2px solid var(--glow); }
+  .snap-name { font-family: var(--mono); font-size: 11px; color: var(--text); }
+  .snap-time { font-family: var(--mono); font-size: 10px; color: var(--text-dim); }
+
+  /* ─── NETWORK MAP ─── */
+  .netmap { width: 100%; height: 220px; position: relative; }
+
+  /* ─── SECTION HEADER ─── */
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+  }
+  .section-title {
+    font-family: var(--head);
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    color: var(--text);
+    text-transform: uppercase;
+  }
+
+  /* corner decorations */
+  .corner-decor {
+    position: absolute;
+    width: 10px; height: 10px;
+    border-color: var(--glow-mid);
+    border-style: solid;
+    opacity: 0.5;
+  }
+  .corner-decor.tl { top: 4px; left: 4px; border-width: 1px 0 0 1px; }
+  .corner-decor.tr { top: 4px; right: 4px; border-width: 1px 1px 0 0; }
+  .corner-decor.bl { bottom: 4px; left: 4px; border-width: 0 0 1px 1px; }
+  .corner-decor.br { bottom: 4px; right: 4px; border-width: 0 1px 1px 0; }
+
+  /* ─── ANIMATIONS ─── */
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .page.active .panel,
+  .page.active .stat-card {
+    animation: fadeIn .3s ease both;
+  }
+  .page.active .grid-4 > *:nth-child(1) { animation-delay: .0s; }
+  .page.active .grid-4 > *:nth-child(2) { animation-delay: .05s; }
+  .page.active .grid-4 > *:nth-child(3) { animation-delay: .10s; }
+  .page.active .grid-4 > *:nth-child(4) { animation-delay: .15s; }
+
+  /* ─── RESPONSIVE ─── */
+  @media (max-width: 1100px) {
+    .grid-4 { grid-template-columns: 1fr 1fr; }
+    .grid-main { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 700px) {
+    .grid-4, .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    main { padding: 16px; }
+    header { padding: 14px 16px; }
+    nav { padding: 0 16px; }
+    .nav-tab { padding: 10px 14px; font-size: 11px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══ HEADER ═══ -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#00d4ff" stroke-width="1.5">
+        <path d="M12 2L2 7v5c0 5.25 4.2 10.15 10 11.35C17.8 22.15 22 17.25 22 12V7L12 2z"/>
+        <path d="M9 12l2 2 4-4"/>
+      </svg>
+    </div>
+    <div class="logo-text">
+      <h1>AI-NIDS</h1>
+      <span>INTRUSION DETECTION SYSTEM · v2</span>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="clock" id="clock">--:--:--</div>
+    <div class="status-pill running" id="statusPill" onclick="toggleCollector()">
+      <div class="dot"></div>
+      <span id="statusText">COLLECTING</span>
+    </div>
+  </div>
+</header>
+
+<!-- ═══ NAV ═══ -->
+<nav>
+  <div class="nav-tab active" onclick="showPage('dashboard', this)">Dashboard</div>
+  <div class="nav-tab" onclick="showPage('alerts', this)">Alerts</div>
+  <div class="nav-tab" onclick="showPage('features', this)">Features</div>
+  <div class="nav-tab" onclick="showPage('pipeline', this)">Pipeline</div>
+  <div class="nav-tab" onclick="showPage('model', this)">Model</div>
+</nav>
+
+<!-- ═══ MAIN ═══ -->
+<main>
+
+  <!-- ──── DASHBOARD PAGE ──── -->
+  <div class="page active" id="page-dashboard">
+
+    <div class="grid-4">
+      <div class="stat-card" id="card-severity">
+        <div class="corner-decor tl"></div><div class="corner-decor br"></div>
+        <div class="stat-label">CURRENT SEVERITY</div>
+        <div class="stat-value" id="val-severity">—</div>
+        <div class="stat-sub" id="sub-severity">awaiting snapshot</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">TOTAL SNAPSHOTS</div>
+        <div class="stat-value" id="val-snapshots">0</div>
+        <div class="stat-sub">this session</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">ANOMALIES DETECTED</div>
+        <div class="stat-value" id="val-anomalies" style="color:var(--red)">0</div>
+        <div class="stat-sub" id="sub-anomalies">0 critical · 0 warning</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">CYCLE #</div>
+        <div class="stat-value" id="val-cycle">0</div>
+        <div class="stat-sub" id="sub-cycle">60s window</div>
+      </div>
+    </div>
+
+    <div class="grid-main">
+      <!-- Severity timeline -->
+      <div class="panel">
+        <div class="corner-decor tl"></div><div class="corner-decor tr"></div>
+        <div class="panel-title">SEVERITY TIMELINE</div>
+        <div class="chart-area">
+          <svg id="timeline-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
+      </div>
+
+      <!-- Gauge -->
+      <div class="panel">
+        <div class="panel-title">ANOMALY SCORE</div>
+        <div class="gauge-wrap">
+          <svg class="gauge-svg" viewBox="0 0 180 110" id="gauge-svg">
+            <!-- track -->
+            <path d="M 20 95 A 70 70 0 0 1 160 95" fill="none" stroke="#0d3348" stroke-width="8" stroke-linecap="round"/>
+            <!-- fill -->
+            <path id="gauge-arc" d="M 20 95 A 70 70 0 0 1 160 95" fill="none" stroke="#00d4ff" stroke-width="8" stroke-linecap="round"
+              stroke-dasharray="220" stroke-dashoffset="220" style="transition:stroke-dashoffset 1s ease, stroke .5s"/>
+            <text id="gauge-num" x="90" y="80" class="gauge-value" fill="#00d4ff">0</text>
+            <text x="90" y="100" class="gauge-label">SEVERITY / 100</text>
+          </svg>
+          <div class="gauge-status" id="gauge-status" style="color:var(--text-dim)">— NORMAL —</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recent alerts -->
+    <div class="panel">
+      <div class="corner-decor tl"></div>
+      <div class="panel-title">RECENT DETECTIONS</div>
+      <table class="alerts-table">
+        <thead>
+          <tr>
+            <th>TIMESTAMP</th>
+            <th>FILE</th>
+            <th>STATUS</th>
+            <th>SEVERITY</th>
+            <th>RAW SCORE</th>
+            <th>TOP INDICATOR</th>
+          </tr>
+        </thead>
+        <tbody id="recent-tbody">
+          <tr><td colspan="6" style="text-align:center;color:var(--text-dim);padding:24px;font-family:var(--mono);font-size:11px;">— AWAITING DATA STREAM —</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Network metrics quick view -->
+    <div class="grid-3" style="margin-top:16px">
+      <div class="panel">
+        <div class="panel-title">NETWORK CONNECTIONS</div>
+        <div style="display:flex; gap:20px; justify-content:center; padding:10px 0">
+          <div style="text-align:center">
+            <div style="font-family:var(--mono);font-size:9px;color:var(--text-dim);margin-bottom:4px">TCP</div>
+            <div style="font-family:var(--head);font-size:28px;color:var(--glow)" id="net-tcp">—</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-family:var(--mono);font-size:9px;color:var(--text-dim);margin-bottom:4px">UDP</div>
+            <div style="font-family:var(--head);font-size:28px;color:var(--glow)" id="net-udp">—</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-family:var(--mono);font-size:9px;color:var(--text-dim);margin-bottom:4px">ESTABLISHED</div>
+            <div style="font-family:var(--head);font-size:28px;color:var(--green)" id="net-est">—</div>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">THROUGHPUT (bytes/sec)</div>
+        <div style="display:flex; gap:20px; justify-content:center; padding:10px 0">
+          <div style="text-align:center">
+            <div style="font-family:var(--mono);font-size:9px;color:var(--text-dim);margin-bottom:4px">↑ SENT</div>
+            <div style="font-family:var(--head);font-size:22px;color:var(--amber)" id="net-sent">—</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-family:var(--mono);font-size:9px;color:var(--text-dim);margin-bottom:4px">↓ RECV</div>
+            <div style="font-family:var(--head);font-size:22px;color:var(--glow)" id="net-recv">—</div>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">SYSTEM RESOURCES</div>
+        <div style="display:flex; gap:20px; justify-content:center; padding:10px 0">
+          <div style="text-align:center">
+            <div style="font-family:var(--mono);font-size:9px;color:var(--text-dim);margin-bottom:4px">CPU %</div>
+            <div style="font-family:var(--head);font-size:28px;color:var(--amber)" id="res-cpu">—</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-family:var(--mono);font-size:9px;color:var(--text-dim);margin-bottom:4px">MEM %</div>
+            <div style="font-family:var(--head);font-size:28px;color:var(--glow)" id="res-mem">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /dashboard -->
+
+  <!-- ──── ALERTS PAGE ──── -->
+  <div class="page" id="page-alerts">
+    <div class="section-header">
+      <div class="section-title">Alert Log</div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <select id="filter-status" style="background:var(--panel);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;padding:6px 10px;border-radius:2px;cursor:pointer" onchange="renderAlerts()">
+          <option value="ALL">ALL STATUS</option>
+          <option value="CRITICAL">CRITICAL</option>
+          <option value="WARNING">WARNING</option>
+          <option value="NORMAL">NORMAL</option>
+        </select>
+        <button class="btn btn-danger" onclick="clearAlerts()">CLEAR LOG</button>
+      </div>
+    </div>
+    <div class="panel">
+      <table class="alerts-table" id="full-alerts-table">
+        <thead>
+          <tr>
+            <th>TIME</th><th>FILE</th><th>STATUS</th><th>SEVERITY</th><th>RAW SCORE</th>
+            <th>FAILED LOGINS</th><th>SHELL SPAWNS</th><th>SUSP PORTS</th><th>EXECVE</th>
+          </tr>
+        </thead>
+        <tbody id="alerts-tbody">
+          <tr><td colspan="9" style="text-align:center;color:var(--text-dim);padding:32px;font-family:var(--mono);font-size:11px">— NO ALERTS YET —</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ──── FEATURES PAGE ──── -->
+  <div class="page" id="page-features">
+    <div class="section-header">
+      <div class="section-title">Feature Inspector</div>
+      <select id="snap-select" style="background:var(--panel);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;padding:6px 10px;border-radius:2px;cursor:pointer" onchange="renderFeatures()">
+        <option value="">SELECT SNAPSHOT</option>
+      </select>
+    </div>
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-title">HIDS FEATURES</div>
+        <div id="hids-bars"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">NIDS FEATURES</div>
+        <div id="nids-bars"></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">RAW JSON</div>
+      <div class="console" id="raw-json" style="height:200px;white-space:pre">— select a snapshot above —</div>
+    </div>
+  </div>
+
+  <!-- ──── PIPELINE PAGE ──── -->
+  <div class="page" id="page-pipeline">
+    <div class="section-header">
+      <div class="section-title">Pipeline Control</div>
+    </div>
+
+    <!-- Steps -->
+    <div class="panel" style="margin-bottom:20px">
+      <div class="panel-title">PIPELINE STATUS</div>
+      <div class="pipeline-steps" id="pipeline-steps">
+        <div class="pipe-step done" id="step-collect">
+          <div class="pipe-dot">📡</div>
+          <div class="pipe-label">COLLECT</div>
+        </div>
+        <div class="pipe-step" id="step-extract">
+          <div class="pipe-dot">⚙️</div>
+          <div class="pipe-label">EXTRACT</div>
+        </div>
+        <div class="pipe-step" id="step-preprocess">
+          <div class="pipe-dot">🔧</div>
+          <div class="pipe-label">PREPROCESS</div>
+        </div>
+        <div class="pipe-step" id="step-score">
+          <div class="pipe-dot">🧠</div>
+          <div class="pipe-label">SCORE</div>
+        </div>
+        <div class="pipe-step" id="step-alert">
+          <div class="pipe-dot">🚨</div>
+          <div class="pipe-label">ALERT</div>
+        </div>
+      </div>
+      <div class="btn-row" style="margin-top:16px">
+        <button class="btn btn-primary" onclick="runPipeline()">▶ RUN PIPELINE</button>
+        <button class="btn btn-amber" onclick="runTraining()">🧠 TRAIN MODEL</button>
+        <button class="btn btn-danger" onclick="resetPipeline()">↺ RESET</button>
+      </div>
+    </div>
+
+    <!-- Console -->
+    <div class="panel">
+      <div class="panel-title">SYSTEM LOG</div>
+      <div class="console" id="sys-console"></div>
+    </div>
+  </div>
+
+  <!-- ──── MODEL PAGE ──── -->
+  <div class="page" id="page-model">
+    <div class="section-header">
+      <div class="section-title">Model · IsolationForest</div>
+    </div>
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-title">MODEL CONFIGURATION</div>
+        <div class="metric-row"><span class="metric-key">ALGORITHM</span><span class="metric-val">Isolation Forest</span></div>
+        <div class="metric-row"><span class="metric-key">CONTAMINATION</span><span class="metric-val" id="m-contamination">auto</span></div>
+        <div class="metric-row"><span class="metric-key">RANDOM STATE</span><span class="metric-val">42</span></div>
+        <div class="metric-row"><span class="metric-key">N_JOBS</span><span class="metric-val">-1 (all cores)</span></div>
+        <div class="metric-row"><span class="metric-key">IMPUTER STRATEGY</span><span class="metric-val">median</span></div>
+        <div class="metric-row"><span class="metric-key">SCALER</span><span class="metric-val">RobustScaler</span></div>
+        <div class="metric-row"><span class="metric-key">SCORE NORMALIZATION</span><span class="metric-val">MinMaxScaler 0–100</span></div>
+        <div class="metric-row"><span class="metric-key">ARTIFACT</span><span class="metric-val">nids_model_artifact.pkl</span></div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">RUNTIME STATS</div>
+        <div class="metric-row"><span class="metric-key">SNAPSHOTS SCORED</span><span class="metric-val" id="m-scored">0</span></div>
+        <div class="metric-row"><span class="metric-key">ANOMALIES FLAGGED</span><span class="metric-val" id="m-flagged">0</span></div>
+        <div class="metric-row"><span class="metric-key">CRITICAL EVENTS</span><span class="metric-val" id="m-critical" style="color:var(--red)">0</span></div>
+        <div class="metric-row"><span class="metric-key">WARNING EVENTS</span><span class="metric-val" id="m-warning" style="color:var(--amber)">0</span></div>
+        <div class="metric-row"><span class="metric-key">MEAN SEVERITY</span><span class="metric-val" id="m-mean">—</span></div>
+        <div class="metric-row"><span class="metric-key">PEAK SEVERITY</span><span class="metric-val" id="m-peak" style="color:var(--red)">—</span></div>
+        <div class="metric-row"><span class="metric-key">MODEL STATUS</span><span class="metric-val" id="m-status" style="color:var(--amber)">NOT TRAINED</span></div>
+        <div class="metric-row"><span class="metric-key">LAST TRAINED</span><span class="metric-val" id="m-trained">—</span></div>
+      </div>
+    </div>
+
+    <!-- Score distribution -->
+    <div class="panel">
+      <div class="panel-title">SCORE DISTRIBUTION</div>
+      <div class="chart-area" style="height:120px">
+        <svg id="dist-svg" width="100%" height="120"></svg>
+      </div>
+    </div>
+
+    <!-- Feature importance (by anomaly contribution) -->
+    <div class="panel">
+      <div class="panel-title">FEATURE REGISTRY · 40 FEATURES</div>
+      <div id="feature-registry" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;padding-top:8px"></div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+// ═══════════════════════════════════════════════════
+// DATA STORE
+// ═══════════════════════════════════════════════════
+const FEATURE_KEYS = [
+  "failed_login_count","root_login_attempts","sudo_command_count","unusual_hour_logins",
+  "unique_pid_count","unique_process_name_count","total_process_count",
+  "shell_spawn_count","orphan_process_count","parent_child_anomaly_score",
+  "encoded_command_ratio","suspicious_command_ratio","command_entropy","pipe_usage_count",
+  "file_create_count","file_delete_count","hidden_file_count","permission_change_count",
+  "system_binary_mod_count","checksum_mismatch_count","suid_binary_execution_count","shadow_file_accessed",
+  "suspicious_kernel_modules",
+  "cpu_usage_mean","cpu_spike_count","memory_usage_mean",
+  "tcp_connections","udp_connections","bytes_sent_per_sec","bytes_recv_per_sec",
+  "listening_ports_count","established_connections","failed_connections","suspicious_local_ports",
+  "dns_request_count","suspicious_user_agents","tls_handshakes",
+  "execve_count","network_syscalls_count","suspicious_syscalls_count"
+];
+
+const HIDS_KEYS = FEATURE_KEYS.slice(0, 29);
+const NIDS_KEYS = FEATURE_KEYS.slice(26);
+
+const state = {
+  running: true,
+  cycle: 0,
+  snapshots: [],
+  alerts: [],
+  severityHistory: [],
+  modelTrained: false,
+  stats: { scored: 0, flagged: 0, critical: 0, warning: 0, meanSev: 0, peakSev: 0 }
+};
+
+// ═══════════════════════════════════════════════════
+// CLOCK
+// ═══════════════════════════════════════════════════
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    now.toTimeString().split(' ')[0];
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ═══════════════════════════════════════════════════
+// NAV
+// ═══════════════════════════════════════════════════
+function showPage(id, el) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('page-' + id).classList.add('active');
+  el.classList.add('active');
+  if (id === 'features') renderFeatureRegistry();
+  if (id === 'model') renderDist();
+}
+
+// ═══════════════════════════════════════════════════
+// TOGGLE COLLECTOR
+// ═══════════════════════════════════════════════════
+function toggleCollector() {
+  state.running = !state.running;
+  const pill = document.getElementById('statusPill');
+  const txt  = document.getElementById('statusText');
+  if (state.running) {
+    pill.className = 'status-pill running';
+    txt.textContent = 'COLLECTING';
+    sysLog('info', 'Collector resumed');
+  } else {
+    pill.className = 'status-pill stopped';
+    txt.textContent = 'STOPPED';
+    sysLog('warn', 'Collector stopped by user');
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// SIMULATE SNAPSHOT (realistic distributions)
+// ═══════════════════════════════════════════════════
+function rand(min, max, float=false) {
+  const v = Math.random() * (max - min) + min;
+  return float ? parseFloat(v.toFixed(4)) : Math.round(v);
+}
+
+function generateSnapshot(isAttack = false) {
+  const base = {
+    timestamp: Date.now() / 1000,
+    datetime: new Date().toISOString(),
+    failed_login_count:         isAttack ? rand(15,80)  : rand(0,3),
+    root_login_attempts:        isAttack ? rand(2,10)   : 0,
+    sudo_command_count:         rand(0,5),
+    unusual_hour_logins:        isAttack ? rand(1,4)    : 0,
+    unique_pid_count:           rand(80,180),
+    unique_process_name_count:  rand(30,80),
+    total_process_count:        rand(100,250),
+    shell_spawn_count:          isAttack ? rand(5,25)   : rand(0,3),
+    orphan_process_count:       isAttack ? rand(3,15)   : rand(0,2),
+    parent_child_anomaly_score: isAttack ? rand(40,90,true)/100 : rand(0,5,true)/100,
+    encoded_command_ratio:      isAttack ? rand(20,80,true)/100 : rand(0,2,true)/100,
+    suspicious_command_ratio:   isAttack ? rand(30,70,true)/100 : 0,
+    command_entropy:            isAttack ? rand(45,60,true)/10  : rand(15,35,true)/10,
+    pipe_usage_count:           isAttack ? rand(5,20)   : rand(0,3),
+    file_create_count:          isAttack ? rand(20,100) : rand(0,5),
+    file_delete_count:          isAttack ? rand(5,30)   : rand(0,2),
+    hidden_file_count:          isAttack ? rand(1,10)   : 0,
+    permission_change_count:    isAttack ? rand(5,20)   : rand(0,2),
+    system_binary_mod_count:    isAttack ? rand(0,3)    : 0,
+    checksum_mismatch_count:    isAttack ? rand(0,3)    : 0,
+    suid_binary_execution_count: isAttack ? rand(1,5)   : 0,
+    shadow_file_accessed:       isAttack ? (Math.random()>.4?1:0) : 0,
+    suspicious_kernel_modules:  isAttack ? (Math.random()>.7?1:0) : 0,
+    cpu_usage_mean:             isAttack ? rand(60,95,true) : rand(5,40,true),
+    cpu_spike_count:            isAttack ? rand(5,20)   : rand(0,2),
+    memory_usage_mean:          rand(30,70,true),
+    tcp_connections:            rand(20,80),
+    udp_connections:            rand(5,20),
+    bytes_sent_per_sec:         isAttack ? rand(50000,500000) : rand(1000,20000),
+    bytes_recv_per_sec:         rand(5000,50000),
+    listening_ports_count:      rand(5,15),
+    established_connections:    rand(10,40),
+    failed_connections:         isAttack ? rand(10,50)  : rand(0,3),
+    suspicious_local_ports:     isAttack ? rand(1,4)    : 0,
+    dns_request_count:          isAttack ? rand(50,200) : rand(5,30),
+    suspicious_user_agents:     isAttack ? rand(1,5)    : 0,
+    tls_handshakes:             rand(0,20),
+    execve_count:               isAttack ? rand(30,150) : rand(5,30),
+    network_syscalls_count:     rand(10,60),
+    suspicious_syscalls_count:  isAttack ? rand(1,8)    : 0,
+  };
+  return base;
+}
+
+function scoreSnapshot(snap) {
+  // Simulate IsolationForest scoring
+  let score = 0;
+  const indicators = [];
+
+  if (snap.failed_login_count > 10)         { score += 20; indicators.push('brute-force'); }
+  if (snap.root_login_attempts > 0)         { score += 15; indicators.push('root-login'); }
+  if (snap.shell_spawn_count > 8)           { score += 10; indicators.push('shell-spawn'); }
+  if (snap.encoded_command_ratio > 0.2)     { score += 12; indicators.push('encoded-cmd'); }
+  if (snap.suspicious_command_ratio > 0.15) { score += 12; indicators.push('susp-command'); }
+  if (snap.hidden_file_count > 0)           { score += 8;  indicators.push('hidden-file'); }
+  if (snap.checksum_mismatch_count > 0)     { score += 25; indicators.push('binary-tamper'); }
+  if (snap.suspicious_kernel_modules > 0)   { score += 30; indicators.push('rootkit-module'); }
+  if (snap.shadow_file_accessed)            { score += 20; indicators.push('/etc/shadow'); }
+  if (snap.suspicious_local_ports > 0)      { score += 15; indicators.push('backdoor-port'); }
+  if (snap.bytes_sent_per_sec > 100000)     { score += 18; indicators.push('exfiltration'); }
+  if (snap.dns_request_count > 80)          { score += 10; indicators.push('dns-tunnel'); }
+  if (snap.suspicious_syscalls_count > 0)   { score += 15; indicators.push('susp-syscall'); }
+  if (snap.execve_count > 80)               { score += 8;  indicators.push('exec-storm'); }
+  if (snap.parent_child_anomaly_score > 0.3){ score += 10; indicators.push('proc-inject'); }
+
+  score = Math.min(100, score + rand(0,5));
+  const rawScore = parseFloat((score / 100 * 1.2 + Math.random() * 0.1).toFixed(4));
+  const isAnomaly = score > 40;
+  const status = score > 80 ? 'CRITICAL' : (isAnomaly ? 'WARNING' : 'NORMAL');
+
+  return { severity_score: score, is_anomaly: isAnomaly, raw_score: rawScore, status, top_indicator: indicators[0] || 'none' };
+}
+
+// ═══════════════════════════════════════════════════
+// MAIN SIMULATION LOOP
+// ═══════════════════════════════════════════════════
+function simCycle() {
+  if (!state.running) return;
+  state.cycle++;
+
+  const isAttack = Math.random() < 0.18; // ~18% chance of attack snapshot
+  const snap = generateSnapshot(isAttack);
+  const result = scoreSnapshot(snap);
+  const fname = `host_${new Date().toISOString().replace(/[-:T]/g,'').split('.')[0]}.json`;
+
+  const entry = { fname, snap, result, ts: new Date() };
+  state.snapshots.unshift(entry);
+  if (state.snapshots.length > 100) state.snapshots.pop();
+  state.alerts.unshift(entry);
+  if (state.alerts.length > 200) state.alerts.pop();
+
+  // update stats
+  state.stats.scored++;
+  state.severityHistory.push(result.severity_score);
+  if (state.severityHistory.length > 30) state.severityHistory.shift();
+  if (result.status === 'CRITICAL') state.stats.critical++;
+  if (result.status === 'WARNING')  state.stats.warning++;
+  if (result.is_anomaly) state.stats.flagged++;
+  state.stats.meanSev = Math.round(state.severityHistory.reduce((a,b)=>a+b,0)/state.severityHistory.length);
+  state.stats.peakSev = Math.max(...state.severityHistory);
+
+  updateDashboard(entry);
+  updateModelStats();
+  updateSnapSelect(entry);
+
+  sysLog('ok', `[CYCLE #${state.cycle}] ${fname} → ${result.status} (${result.severity_score}/100)`);
+  if (result.status === 'CRITICAL') sysLog('err', `⚠ CRITICAL: ${result.top_indicator || 'anomaly detected'}`);
+}
+
+setInterval(simCycle, 6000); // simulate every 6s for demo (represents 60s cycle)
+setTimeout(simCycle, 800);   // fire immediately on load
+
+// ═══════════════════════════════════════════════════
+// UPDATE DASHBOARD
+// ═══════════════════════════════════════════════════
+function updateDashboard(entry) {
+  const { result, snap, fname, ts } = entry;
+
+  // stat cards
+  const scard = document.getElementById('card-severity');
+  const sval  = document.getElementById('val-severity');
+  sval.textContent = result.severity_score;
+  scard.className = 'stat-card ' + result.status.toLowerCase();
+  document.getElementById('sub-severity').textContent = result.status;
+
+  document.getElementById('val-snapshots').textContent = state.stats.scored;
+  document.getElementById('val-anomalies').textContent = state.stats.flagged;
+  document.getElementById('sub-anomalies').textContent = `${state.stats.critical} critical · ${state.stats.warning} warning`;
+  document.getElementById('val-cycle').textContent = state.cycle;
+  document.getElementById('sub-cycle').textContent = `last: ${ts.toTimeString().split(' ')[0]}`;
+
+  // gauge
+  updateGauge(result.severity_score, result.status);
+
+  // timeline
+  renderTimeline();
+
+  // network quick
+  document.getElementById('net-tcp').textContent = snap.tcp_connections;
+  document.getElementById('net-udp').textContent = snap.udp_connections;
+  document.getElementById('net-est').textContent = snap.established_connections;
+  document.getElementById('net-sent').textContent = fmtBytes(snap.bytes_sent_per_sec);
+  document.getElementById('net-recv').textContent = fmtBytes(snap.bytes_recv_per_sec);
+  document.getElementById('res-cpu').textContent = snap.cpu_usage_mean.toFixed(1) + '%';
+  document.getElementById('res-mem').textContent = snap.memory_usage_mean.toFixed(1) + '%';
+
+  // recent table
+  const tbody = document.getElementById('recent-tbody');
+  const rows = state.snapshots.slice(0,8).map(e => `
+    <tr>
+      <td>${e.ts.toTimeString().split(' ')[0]}</td>
+      <td style="color:var(--text-dim)">${e.fname}</td>
+      <td><span class="badge ${e.result.status}">${e.result.status}</span></td>
+      <td style="color:${statusColor(e.result.status)}">${e.result.severity_score}</td>
+      <td style="color:var(--text-dim)">${e.result.raw_score}</td>
+      <td style="color:var(--text-dim)">${e.result.top_indicator || '—'}</td>
+    </tr>`).join('');
+  tbody.innerHTML = rows || `<tr><td colspan="6" style="text-align:center;color:var(--text-dim);padding:24px;font-family:var(--mono);font-size:11px">— AWAITING DATA STREAM —</td></tr>`;
+
+  // full alerts page
+  renderAlerts();
+}
+
+function updateGauge(score, status) {
+  const arc = document.getElementById('gauge-arc');
+  const num = document.getElementById('gauge-num');
+  const lbl = document.getElementById('gauge-status');
+  const total = 220;
+  const offset = total - (score / 100) * total;
+  arc.setAttribute('stroke-dashoffset', offset);
+
+  const color = statusColor(status);
+  arc.setAttribute('stroke', color);
+  num.setAttribute('fill', color);
+  num.textContent = score;
+  lbl.textContent = `— ${status} —`;
+  lbl.style.color = color;
+}
+
+function statusColor(s) {
+  return s === 'CRITICAL' ? 'var(--red)' : s === 'WARNING' ? 'var(--amber)' : 'var(--green)';
+}
+
+function fmtBytes(b) {
+  if (b > 1e6) return (b/1e6).toFixed(1)+'M';
+  if (b > 1e3) return (b/1e3).toFixed(1)+'K';
+  return Math.round(b)+'B';
+}
+
+// ═══════════════════════════════════════════════════
+// TIMELINE CHART
+// ═══════════════════════════════════════════════════
+function renderTimeline() {
+  const svg = document.getElementById('timeline-svg');
+  const W = svg.clientWidth || 600;
+  const H = 140;
+  const pad = { t: 10, r: 20, b: 30, l: 40 };
+  const cW = W - pad.l - pad.r;
+  const cH = H - pad.t - pad.b;
+  const data = state.severityHistory;
+  if (data.length < 2) return;
+
+  const xStep = cW / (data.length - 1);
+  const pts = data.map((v, i) => [pad.l + i * xStep, pad.t + cH - (v / 100) * cH]);
+
+  // gradient areas
+  const areaPath = `M ${pts[0][0]} ${pad.t+cH} ` +
+    pts.map(p => `L ${p[0]} ${p[1]}`).join(' ') +
+    ` L ${pts[pts.length-1][0]} ${pad.t+cH} Z`;
+
+  const linePath = `M ${pts.map(p => p.join(',')).join(' L ')}`;
+
+  // critical zones
+  const critY = pad.t + cH - (80/100)*cH;
+  const warnY = pad.t + cH - (40/100)*cH;
+
+  svg.innerHTML = `
+    <defs>
+      <linearGradient id="tg" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#00d4ff" stop-opacity="0.25"/>
+        <stop offset="100%" stop-color="#00d4ff" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    <!-- grid lines -->
+    <line x1="${pad.l}" y1="${critY}" x2="${W-pad.r}" y2="${critY}" stroke="#ff2d5520" stroke-width="1" stroke-dasharray="4,3"/>
+    <line x1="${pad.l}" y1="${warnY}" x2="${W-pad.r}" y2="${warnY}" stroke="#ffaa0020" stroke-width="1" stroke-dasharray="4,3"/>
+    <text x="${pad.l-4}" y="${critY+4}" font-family="Share Tech Mono" font-size="8" fill="#ff2d5560" text-anchor="end">80</text>
+    <text x="${pad.l-4}" y="${warnY+4}" font-family="Share Tech Mono" font-size="8" fill="#ffaa0060" text-anchor="end">40</text>
+    <text x="${pad.l-4}" y="${pad.t+cH+4}" font-family="Share Tech Mono" font-size="8" fill="#3a6678" text-anchor="end">0</text>
+    <!-- area fill -->
+    <path d="${areaPath}" fill="url(#tg)"/>
+    <!-- line -->
+    <path d="${linePath}" fill="none" stroke="#00d4ff" stroke-width="1.5" stroke-linejoin="round"/>
+    <!-- dots -->
+    ${pts.map((p,i) => {
+      const v = data[i];
+      const c = v > 80 ? '#ff2d55' : v > 40 ? '#ffaa00' : '#00d4ff';
+      return `<circle cx="${p[0]}" cy="${p[1]}" r="${i===pts.length-1?4:2}" fill="${c}" ${i===pts.length-1?`filter="drop-shadow(0 0 4px ${c})"`:''}/>`;
+    }).join('')}
+    <!-- x axis -->
+    <line x1="${pad.l}" y1="${pad.t+cH}" x2="${W-pad.r}" y2="${pad.t+cH}" stroke="#0d3348" stroke-width="1"/>
+  `;
+}
+window.addEventListener('resize', renderTimeline);
+
+// ═══════════════════════════════════════════════════
+// ALERTS
+// ═══════════════════════════════════════════════════
+function renderAlerts() {
+  const filter = document.getElementById('filter-status')?.value || 'ALL';
+  const tbody = document.getElementById('alerts-tbody');
+  const data = filter === 'ALL' ? state.alerts : state.alerts.filter(e => e.result.status === filter);
+  tbody.innerHTML = data.slice(0,50).map(e => `
+    <tr>
+      <td>${e.ts.toTimeString().split(' ')[0]}</td>
+      <td style="color:var(--text-dim);font-size:10px">${e.fname}</td>
+      <td><span class="badge ${e.result.status}">${e.result.status}</span></td>
+      <td style="color:${statusColor(e.result.status)}">${e.result.severity_score}</td>
+      <td style="color:var(--text-dim)">${e.result.raw_score}</td>
+      <td>${e.snap.failed_login_count}</td>
+      <td>${e.snap.shell_spawn_count}</td>
+      <td>${e.snap.suspicious_local_ports}</td>
+      <td>${e.snap.execve_count}</td>
+    </tr>`).join('') || `<tr><td colspan="9" style="text-align:center;color:var(--text-dim);padding:32px;font-family:var(--mono);font-size:11px">— NO MATCHING ALERTS —</td></tr>`;
+}
+
+function clearAlerts() {
+  state.alerts = [];
+  renderAlerts();
+}
+
+// ═══════════════════════════════════════════════════
+// FEATURES
+// ═══════════════════════════════════════════════════
+function updateSnapSelect(entry) {
+  const sel = document.getElementById('snap-select');
+  const opt = document.createElement('option');
+  opt.value = state.snapshots.length - 1 + ''; // index 0 is newest
+  opt.value = '0';
+  // rebuild all options
+  sel.innerHTML = '<option value="">SELECT SNAPSHOT</option>' +
+    state.snapshots.map((e,i) => `<option value="${i}">${e.fname}</option>`).join('');
+}
+
+function renderFeatures() {
+  const idx = parseInt(document.getElementById('snap-select').value);
+  if (isNaN(idx) || !state.snapshots[idx]) return;
+  const { snap } = state.snapshots[idx];
+
+  // feature max values for normalization
+  const maxVals = {
+    failed_login_count: 100, root_login_attempts: 20, sudo_command_count: 50, unusual_hour_logins: 20,
+    unique_pid_count: 300, unique_process_name_count: 150, total_process_count: 400,
+    shell_spawn_count: 30, orphan_process_count: 30, parent_child_anomaly_score: 1,
+    encoded_command_ratio: 1, suspicious_command_ratio: 1, command_entropy: 8, pipe_usage_count: 30,
+    file_create_count: 200, file_delete_count: 50, hidden_file_count: 20, permission_change_count: 50,
+    system_binary_mod_count: 5, checksum_mismatch_count: 5, suid_binary_execution_count: 10, shadow_file_accessed: 1,
+    suspicious_kernel_modules: 5,
+    cpu_usage_mean: 100, cpu_spike_count: 30, memory_usage_mean: 100,
+    tcp_connections: 200, udp_connections: 50, bytes_sent_per_sec: 1000000, bytes_recv_per_sec: 500000,
+    listening_ports_count: 30, established_connections: 100, failed_connections: 100, suspicious_local_ports: 10,
+    dns_request_count: 300, suspicious_user_agents: 10, tls_handshakes: 50,
+    execve_count: 200, network_syscalls_count: 200, suspicious_syscalls_count: 20,
+  };
+
+  function barColor(key, pct) {
+    const danger = ['failed_login_count','root_login_attempts','encoded_command_ratio','suspicious_command_ratio',
+      'hidden_file_count','checksum_mismatch_count','shadow_file_accessed','suspicious_kernel_modules',
+      'suspicious_local_ports','suspicious_user_agents','suspicious_syscalls_count','suspicious_command_ratio'];
+    if (danger.includes(key) && pct > 0.1) return 'var(--red)';
+    if (pct > 0.7) return 'var(--amber)';
+    return 'var(--glow)';
+  }
+
+  function renderBars(keys, containerId) {
+    const container = document.getElementById(containerId);
+    container.innerHTML = keys.map(k => {
+      const val = snap[k] ?? 0;
+      const pct = Math.min(1, val / (maxVals[k] || 1));
+      const color = barColor(k, pct);
+      return `
+        <div class="feature-bar-row">
+          <div class="feature-bar-label" title="${k}">${k}</div>
+          <div class="feature-bar-track">
+            <div class="feature-bar-fill" style="width:${(pct*100).toFixed(1)}%;background:${color};box-shadow:0 0 4px ${color}40"></div>
+          </div>
+          <div class="feature-bar-val">${typeof val === 'number' && !Number.isInteger(val) ? val.toFixed(3) : val}</div>
+        </div>`;
+    }).join('');
+  }
+
+  renderBars(HIDS_KEYS, 'hids-bars');
+  renderBars(NIDS_KEYS, 'nids-bars');
+
+  // raw JSON
+  document.getElementById('raw-json').textContent = JSON.stringify(snap, null, 2);
+}
+
+// ═══════════════════════════════════════════════════
+// PIPELINE
+// ═══════════════════════════════════════════════════
+const pipelineSteps = ['collect','extract','preprocess','score','alert'];
+
+function setPipeStep(active) {
+  pipelineSteps.forEach((s, i) => {
+    const el = document.getElementById('step-' + s);
+    if (i < active) el.className = 'pipe-step done';
+    else if (i === active) el.className = 'pipe-step active';
+    else el.className = 'pipe-step';
+  });
+}
+
+function runPipeline() {
+  sysLog('info', '--- Pipeline triggered ---');
+  setPipeStep(0);
+  sysLog('ok', '[1/5] Collector: reading /var/log/auth.log, /var/log/audit/audit.log');
+  setTimeout(()=>{
+    setPipeStep(1);
+    sysLog('ok', '[2/5] Feature extraction: 40 features extracted');
+    setTimeout(()=>{
+      setPipeStep(2);
+      sysLog('ok', '[3/5] Preprocessing: SimpleImputer(median) → RobustScaler');
+      setTimeout(()=>{
+        setPipeStep(3);
+        sysLog('ok', '[4/5] IsolationForest scoring: anomaly score computed');
+        setTimeout(()=>{
+          setPipeStep(4);
+          const last = state.snapshots[0];
+          if (last) {
+            const s = last.result.status;
+            if (s==='CRITICAL') sysLog('err', `[5/5] ALERT: CRITICAL — severity ${last.result.severity_score}/100`);
+            else if (s==='WARNING') sysLog('warn', `[5/5] ALERT: WARNING — severity ${last.result.severity_score}/100`);
+            else sysLog('ok', '[5/5] No alert: status NORMAL');
+          }
+          setTimeout(()=>setPipeStep(-1), 1500);
+        }, 800);
+      }, 700);
+    }, 600);
+  }, 500);
+}
+
+function runTraining() {
+  sysLog('info', '--- Training run initiated ---');
+  sysLog('info', `Loading snapshots from data/raw/ (${state.stats.scored} available)`);
+  let i = 0;
+  const steps = [
+    ()=>sysLog('ok',  'Data loaded: building feature matrix'),
+    ()=>sysLog('ok',  'SimpleImputer(strategy=median) fitted'),
+    ()=>sysLog('ok',  'RobustScaler fitted'),
+    ()=>sysLog('ok',  `IsolationForest(contamination=auto, n_jobs=-1) training on ${state.stats.scored} records...`),
+    ()=>sysLog('ok',  'Score calibration: MinMaxScaler(0-100) fitted on training scores'),
+    ()=>{ sysLog('ok','Artifact saved → nids_model_artifact.pkl');
+          state.modelTrained = true;
+          document.getElementById('m-status').textContent = 'TRAINED';
+          document.getElementById('m-status').style.color = 'var(--green)';
+          document.getElementById('m-trained').textContent = new Date().toLocaleTimeString();
+        }
+  ];
+  const run = () => { if(i<steps.length){steps[i++](); setTimeout(run,700);} };
+  run();
+}
+
+function resetPipeline() {
+  pipelineSteps.forEach(s => {
+    const el = document.getElementById('step-' + s);
+    el.className = 'pipe-step';
+  });
+  document.getElementById('step-collect').className = 'pipe-step done';
+  sysLog('warn', 'Pipeline reset');
+}
+
+// ═══════════════════════════════════════════════════
+// MODEL PAGE
+// ═══════════════════════════════════════════════════
+function updateModelStats() {
+  document.getElementById('m-scored').textContent   = state.stats.scored;
+  document.getElementById('m-flagged').textContent  = state.stats.flagged;
+  document.getElementById('m-critical').textContent = state.stats.critical;
+  document.getElementById('m-warning').textContent  = state.stats.warning;
+  document.getElementById('m-mean').textContent     = state.stats.meanSev + '/100';
+  document.getElementById('m-peak').textContent     = state.stats.peakSev + '/100';
+}
+
+function renderDist() {
+  if (state.severityHistory.length < 2) return;
+  const svg = document.getElementById('dist-svg');
+  const W = svg.clientWidth || 700;
+  const H = 120;
+  const bins = 20;
+  const binW = W / bins;
+  const counts = new Array(bins).fill(0);
+  state.severityHistory.forEach(v => {
+    const b = Math.min(bins-1, Math.floor(v / 100 * bins));
+    counts[b]++;
+  });
+  const maxC = Math.max(...counts, 1);
+  const bars = counts.map((c, i) => {
+    const x = i * binW + 1;
+    const bh = (c/maxC) * (H-20);
+    const y = H - bh - 10;
+    const hue = i / bins;
+    const color = hue > 0.8 ? '#ff2d55' : hue > 0.4 ? '#ffaa00' : '#00d4ff';
+    return `<rect x="${x}" y="${y}" width="${binW-2}" height="${bh}" fill="${color}" opacity="0.7" rx="1"/>`;
+  }).join('');
+  svg.innerHTML = bars + `
+    <line x1="0" y1="${H-10}" x2="${W}" y2="${H-10}" stroke="#0d3348" stroke-width="1"/>
+    <text x="0" y="${H}" font-family="Share Tech Mono" font-size="8" fill="#3a6678">0</text>
+    <text x="${W/2}" y="${H}" font-family="Share Tech Mono" font-size="8" fill="#3a6678" text-anchor="middle">50</text>
+    <text x="${W}" y="${H}" font-family="Share Tech Mono" font-size="8" fill="#3a6678" text-anchor="end">100</text>`;
+}
+
+function renderFeatureRegistry() {
+  const container = document.getElementById('feature-registry');
+  if (container.children.length > 0) return;
+  container.innerHTML = FEATURE_KEYS.map((k, i) => {
+    const isHids = i < 29;
+    const color = isHids ? 'var(--glow)' : 'var(--amber)';
+    const bg = isHids ? '#00d4ff0a' : '#ffaa000a';
+    const border = isHids ? '#00d4ff20' : '#ffaa0020';
+    return `
+      <div style="padding:8px 10px;border:1px solid ${border};border-radius:2px;background:${bg}">
+        <div style="font-family:var(--mono);font-size:9px;color:${color};margin-bottom:2px">${isHids?'HIDS':'NIDS'}</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--text)">${k}</div>
+      </div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════
+// SYSTEM LOG
+// ═══════════════════════════════════════════════════
+function sysLog(type, msg) {
+  const console_ = document.getElementById('sys-console');
+  if (!console_) return;
+  const now = new Date().toTimeString().split(' ')[0];
+  const cls = type === 'ok' ? 'log-ok' : type === 'err' ? 'log-err' : type === 'warn' ? 'log-warn' : 'log-info';
+  const prefix = { ok: '[+]', err: '[!]', warn: '[*]', info: '[~]' }[type] || '[?]';
+  const line = document.createElement('div');
+  line.className = 'log-line';
+  line.innerHTML = `<span class="log-ts">${now}</span><span class="${cls}">${prefix} ${msg}</span>`;
+  console_.appendChild(line);
+  console_.scrollTop = console_.scrollHeight;
+  if (console_.children.length > 200) console_.removeChild(console_.firstChild);
+}
+
+// initial log entries
+sysLog('info', 'AI-NIDS Frontend v2 initialized');
+sysLog('ok', 'inotify_simple: available');
+sysLog('ok', 'scapy: available');
+sysLog('ok', 'Scanning SUID binaries at startup...');
+sysLog('ok', 'Found 42 SUID/SGID binaries');
+sysLog('ok', 'inotify monitoring: 12 directories');
+sysLog('info', 'Collector started — 60s window cycle');
+</script>
+</body>
+</html>
